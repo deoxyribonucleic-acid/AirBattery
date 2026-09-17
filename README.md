@@ -50,8 +50,8 @@ brew install lihaoyun6/tap/airbattery
 **5. Why does AirBattery need Bluetooth permission?**
 > AirBattery needs Bluetooth to capture packets from peripheral devices in order to parse their battery information.  
 
-## Donate
-<img src="./img/donate.png" width="350"/>
+## Support the Original Author
+To support AirBattery's original author, see the [donation section in lihaoyun6's README](https://github.com/lihaoyun6/AirBattery/blob/main/README.md#donate).
 
 ## Thanks
 [libimobiledevice](https://github.com/libimobiledevice/libimobiledevice) @libimobiledevice  
@@ -65,3 +65,5 @@ brew install lihaoyun6/tap/airbattery
 
 [ChatGPT](https://chat.openai.com) @OpenAI  
 > Some of the code in this project is generated or refactored by ChatGPT.  
+
+Widget background support references [ClearAndBlurredWidgets](https://github.com/pookjw/ClearAndBlurredWidgets) by @pookjw.

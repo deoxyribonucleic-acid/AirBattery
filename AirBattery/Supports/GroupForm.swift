@@ -26,7 +26,7 @@ struct HoverButton<Content: View>: View {
 }
 
 struct SForm<Content: View>: View {
-    var spacing: CGFloat = 30
+    var spacing: CGFloat = 24
     @ViewBuilder let content: () -> Content
     
     var body: some View {
@@ -34,7 +34,7 @@ struct SForm<Content: View>: View {
             VStack(alignment: .leading, spacing: spacing) {
                 content()
             }
-            .padding(24)
+            .padding(28)
             .frame(maxWidth: .infinity, alignment: .topLeading)
         }
     }
@@ -49,13 +49,10 @@ struct SGroupBox<Content: View>: View {
             if let label = label {
                 Text(label).font(.headline).padding(.leading, 4)
             }
-            VStack(spacing: 12) { content() }
-                .padding(16)
+            VStack(spacing: 16) { content() }
+                .padding(20)
                 .frame(maxWidth: .infinity)
-                .background(Color.primary.opacity(0.035))
-                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-                .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .strokeBorder(Color.primary.opacity(0.07)))
+                .airBatteryPanel(cornerRadius: 18)
         }
     }
 }
@@ -275,7 +272,7 @@ struct SSteper: View {
 }
 
 // Shared floating surfaces. System material handles contrast and transparency;
-// content cards deliberately use a quieter fill rather than stacked glass.
+// section cards share this surface and do not stack another material underneath.
 struct AirBatteryPanelSurface: ViewModifier {
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     var cornerRadius: CGFloat

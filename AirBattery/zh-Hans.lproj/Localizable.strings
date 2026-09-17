@@ -163,3 +163,22 @@
 
 "Batteries · Liquid Glass" = "电量 · Liquid Glass";
 "Batteries · Background" = "电量 · 带背景";
+
+// Main window
+"Devices" = "设备";
+"Toggle Sidebar" = "显示或隐藏侧栏";
+"Battery Monitor" = "电量监测";
+"Version %@" = "版本 %@";
+"Your Batteries" = "设备电量";
+"Battery levels at a glance." = "集中查看各设备的电量。";
+"No Battery Data" = "暂无电量数据";
+"Connect a device or check discovery settings." = "请连接设备，或检查设备发现设置。";
+"External Power" = "外接电源";
+"Last Updated" = "上次更新";
+"Battery Level" = "电量";
+
+"Forked version by deoxyribonucleic-acid" = "Fork 版本由 deoxyribonucleic-acid 维护";
+"Fork Repository" = "当前分支仓库";
+"Based on lihaoyun6/AirBattery" = "基于 lihaoyun6/AirBattery";
+
+"About" = "关于";

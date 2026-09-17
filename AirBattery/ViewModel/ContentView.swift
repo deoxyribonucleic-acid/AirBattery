@@ -981,12 +981,12 @@ func openSettingPanel() {
     dockWindow.orderOut(nil)
     menuPopover.performClose(nil)
     if settingsWindowController == nil {
-        let controller = NSHostingController(rootView: SettingsView())
+        let controller = AirBatteryMainController()
         let window = NSWindow(contentViewController: controller)
         window.title = "AirBattery Settings".local
-        window.styleMask = [.titled, .closable, .miniaturizable, .resizable]
-        window.setContentSize(NSSize(width: 780, height: 600))
-        window.minSize = NSSize(width: 720, height: 540)
+        window.styleMask = [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView]
+        window.setContentSize(NSSize(width: 940, height: 680))
+        window.minSize = NSSize(width: 740, height: 560)
         window.isReleasedWhenClosed = false
         window.setFrameAutosaveName("AirBatterySettings")
         window.center()

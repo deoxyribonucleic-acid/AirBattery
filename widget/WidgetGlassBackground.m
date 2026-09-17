@@ -1,4 +1,4 @@
-// macOS material background support inspired by pookjw/ClearAndBlurredWidgets.
+// J. Kim, “ClearAndBlurredWidgets,” GitHub, commit 64d92a5. https://github.com/pookjw/ClearAndBlurredWidgets
 // Private runtime integration for this custom build; unsupported runtimes fall back.
 #import <Foundation/Foundation.h>
 #import <objc/message.h>

@@ -50,8 +50,8 @@ brew install lihaoyun6/tap/airbattery
 **5. 为什么 AirBattery 需要使用蓝牙权限?**  
 > AirBattery 需要使用蓝牙来获取周边设备的数据包以解析其电量信息.  
 
-## 赞助
-<img src="./img/donate.png" width="350"/>
+## 赞助原作者
+如需支持 AirBattery 原作者，请查看 [lihaoyun6 原项目 README 的赞助说明](https://github.com/lihaoyun6/AirBattery/blob/main/README_zh.md#赞助)。
 
 ## 致谢
 [libimobiledevice](https://github.com/libimobiledevice/libimobiledevice) @libimobiledevice  
@@ -65,3 +65,5 @@ brew install lihaoyun6/tap/airbattery
 
 [ChatGPT](https://chat.openai.com) @OpenAI  
 > 注: 本项目部分代码使用 ChatGPT 生成或重构整理
+
+小组件背景实现参考了 @pookjw 的 [ClearAndBlurredWidgets](https://github.com/pookjw/ClearAndBlurredWidgets)。

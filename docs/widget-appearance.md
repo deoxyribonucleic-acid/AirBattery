@@ -76,7 +76,7 @@ xcrun clang -fobjc-arc -framework Foundation Tests/widget_glass_regressions.m \
 /private/tmp/airbattery-widget-glass-tests
 ```
 
-Implementation reference: https://github.com/pookjw/ClearAndBlurredWidgets
+J. Kim, “ClearAndBlurredWidgets,” GitHub, commit 64d92a5. https://github.com/pookjw/ClearAndBlurredWidgets
 
 Reference: https://developer.apple.com/documentation/widgetkit/optimizing-your-widget-for-accented-rendering-mode-and-liquid-glass
 

@@ -4,11 +4,19 @@ The app's settings, menu-bar controls, Dock panel, and battery-alert editor shar
 an updated native appearance. Widget changes are described separately in
 `widget-appearance.md`.
 
-- Settings use NavigationSplitView on macOS 13+, with NavigationView fallback.
-  The window has a 720 × 540 minimum, a flexible sidebar, and scrollable pages.
+- The main window uses an AppKit NSSplitViewController with SwiftUI sidebar and
+  detail hosts, following the local native-via implementation. A unified native
+  toolbar owns the accessible sidebar toggle and selected-page title. The window
+  starts at 940 × 680 with a 740 × 560 minimum and preserves its saved frame.
+- The Devices landing page shows adaptive battery cards, charge indication and
+  last-update ages. It reads existing snapshots on the existing UI refresh signal;
+  it never starts another scanner. Settings remain available in the sidebar.
+- Section cards use 18-point corners and 20-point insets with the shared glass
+  surface. Content uses 28-point page insets. Reduce Transparency supplies an
+  opaque fallback; page animations honor Reduce Motion.
 - Shared setting rows have a 28-point minimum height instead of a fixed 16 points.
   Switches use native small control sizing instead of a scaling transform.
-  Quiet rounded content groups separate sections without adding layered glass.
+  Native glass section cards share spacing across the settings pages.
 - Menu-bar header buttons have larger hit targets and accessibility labels.
   The NSPopover retains its system background. Device and Nearcast rows use
   semantic colors and softer group boundaries.
@@ -49,3 +57,11 @@ Modern battery fill uses only the SVG body (65.6 of 73.6 source units); the
 terminal stays at a fixed opacity. The hide-percentage threshold supports
 Always (-1), Never (100), and existing percentage thresholds. Always hides
 both inside and outside text, including at 0%, and uses the compact status width.
+
+The main window enables `fullSizeContentView` with full-height layout on the
+sidebar only. AppKit keeps the detail toolbar background; a tracking separator
+explicitly follows divider 0. The toolbar uses a native sidebar button and a
+plain page title after the divider, avoiding nested SwiftUI glass buttons.
+Manual checks: sidebar material reaches the traffic lights, header content stays
+below the controls, detail title stays readable, and collapse/resize/reopen keep
+both toolbar sections aligned.

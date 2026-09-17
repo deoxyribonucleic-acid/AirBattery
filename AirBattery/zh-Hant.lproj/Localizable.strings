@@ -163,3 +163,22 @@
 
 "Batteries · Liquid Glass" = "電量 · Liquid Glass";
 "Batteries · Background" = "電量 · 帶背景";
+
+// Main window
+"Devices" = "裝置";
+"Toggle Sidebar" = "顯示或隱藏側欄";
+"Battery Monitor" = "電量監測";
+"Version %@" = "版本 %@";
+"Your Batteries" = "裝置電量";
+"Battery levels at a glance." = "集中查看各裝置的電量。";
+"No Battery Data" = "暫無電量資料";
+"Connect a device or check discovery settings." = "請連接裝置，或檢查裝置探索設定。";
+"External Power" = "外接電源";
+"Last Updated" = "上次更新";
+"Battery Level" = "電量";
+
+"Forked version by deoxyribonucleic-acid" = "Fork 版本由 deoxyribonucleic-acid 維護";
+"Fork Repository" = "目前分支倉庫";
+"Based on lihaoyun6/AirBattery" = "基於 lihaoyun6/AirBattery";
+
+"About" = "關於";

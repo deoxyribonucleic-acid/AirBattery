@@ -5,25 +5,22 @@
 //  Created by apple on 2023/9/7.
 //
 
+import AppKit
 import SwiftUI
 import ServiceManagement
 import WidgetKit
+import Combine
 
-struct SettingsView: View {
-    @State private var selectedItem: String? = "General"
-    @AppStorage("showDebug") var showDebug: Bool = false
-    
-    private let pages = ["General", "Display", "Nearbility", "Nearcast", "Widget", "Blocklist"]
-
-    private func title(_ page: String) -> LocalizedStringKey {
-        switch page {
-        case "Display": return "Menu Bar & Dock"
-        default: return LocalizedStringKey(page)
-        }
+// Native split-window structure adapted to AirBattery from native-via's UI.
+final class AirBatteryNavigation: ObservableObject {
+    @Published var selectedItem: String? = "Devices"
+    static let settingsPages = ["General", "Display", "Nearbility", "Nearcast", "Widget", "Blocklist"]
+    static func title(_ page: String) -> String {
+        page == "Display" ? "Menu Bar & Dock" : page
     }
-
-    private func symbol(_ page: String) -> String {
+    static func symbol(_ page: String) -> String {
         switch page {
+        case "Devices": return "battery.100"
         case "General": return "gearshape"
         case "Display": return "menubar.dock.rectangle"
         case "Nearbility": return "antenna.radiowaves.left.and.right"
@@ -33,55 +30,224 @@ struct SettingsView: View {
         default: return "ladybug"
         }
     }
+}
 
-    @ViewBuilder
-    private func destination(_ page: String) -> some View {
-        switch page {
-        case "Display": DisplayView()
-        case "Nearbility": NearbilityView()
-        case "Nearcast": NearcastView()
-        case "Widget": WidgetView()
-        case "Blocklist": BlacklistView()
-        case "Debug": DebugView(selectedItem: $selectedItem)
-        default: GeneralView()
+struct SettingsView: NSViewControllerRepresentable {
+    func makeNSViewController(context: Context) -> AirBatteryMainController { AirBatteryMainController() }
+    func updateNSViewController(_ controller: AirBatteryMainController, context: Context) {}
+}
+
+final class AirBatteryMainController: NSSplitViewController, NSToolbarDelegate {
+    private let navigation = AirBatteryNavigation()
+    private var titleSubscription: AnyCancellable?
+    private let separatorID = NSToolbarItem.Identifier("AirBatterySidebarDivider")
+    private let titleID = NSToolbarItem.Identifier("AirBatteryPageTitle")
+    private let pageTitle = NSTextField(labelWithString: "")
+
+    init() {
+        super.init(nibName: nil, bundle: nil)
+        // Install items before AppKit loads and wires the split view.
+        let sidebar = NSSplitViewItem(sidebarWithViewController:
+            NSHostingController(rootView: AirBatterySidebar(navigation: navigation)))
+        sidebar.minimumThickness = 190
+        sidebar.maximumThickness = 260
+        sidebar.canCollapse = true
+        sidebar.allowsFullHeightLayout = true
+        addSplitViewItem(sidebar)
+        let detail = NSSplitViewItem(viewController:
+            NSHostingController(rootView: AirBatteryDetail(navigation: navigation)))
+        detail.minimumThickness = 500
+        detail.allowsFullHeightLayout = false
+        addSplitViewItem(detail)
+    }
+    @available(*, unavailable)
+    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+
+    override func viewDidLoad() {
+        super.viewDidLoad()
+        splitView.isVertical = true
+        splitView.dividerStyle = .thin
+        DispatchQueue.main.async { [weak self] in self?.splitView.setPosition(220, ofDividerAt: 0) }
+    }
+    override func viewDidAppear() {
+        super.viewDidAppear()
+        guard let window = view.window else { return }
+        // Extend the native sidebar material behind the traffic lights while
+        // letting AppKit retain the detail toolbar background and safe area.
+        window.styleMask.insert(.fullSizeContentView)
+        window.titlebarAppearsTransparent = false
+        if window.toolbar == nil {
+            let toolbar = NSToolbar(identifier: "AirBatteryMainToolbar")
+            toolbar.delegate = self
+            toolbar.displayMode = .iconOnly
+            window.toolbarStyle = .unified
+            // Keep the native window title for accessibility, but place its visible
+            // label after the split divider so it cannot crowd the sidebar controls.
+            window.titleVisibility = .hidden
+            window.subtitle = ""
+            window.titlebarSeparatorStyle = .none
+            window.toolbar = toolbar
+        }
+        if titleSubscription == nil {
+            titleSubscription = navigation.$selectedItem.sink { [weak self, weak window] page in
+                let title = AirBatteryNavigation.title(page ?? "Devices").local
+                window?.title = title + " — AirBattery"
+                self?.pageTitle.stringValue = title
+            }
         }
     }
+    func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
+        [.toggleSidebar, separatorID, titleID, .flexibleSpace]
+    }
+    func toolbarAllowedItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
+        toolbarDefaultItemIdentifiers(toolbar)
+    }
+    func toolbar(_ toolbar: NSToolbar, itemForItemIdentifier identifier: NSToolbarItem.Identifier,
+                 willBeInsertedIntoToolbar flag: Bool) -> NSToolbarItem? {
+        if identifier == separatorID {
+            return NSTrackingSeparatorToolbarItem(identifier: identifier, splitView: splitView, dividerIndex: 0)
+        }
+        if identifier == .toggleSidebar {
+            let item = NSToolbarItem(itemIdentifier: .toggleSidebar)
+            item.label = "Toggle Sidebar".local
+            item.toolTip = item.label
+            item.image = NSImage(systemSymbolName: "sidebar.left", accessibilityDescription: item.label)
+            item.target = self
+            item.action = #selector(NSSplitViewController.toggleSidebar(_:))
+            item.isNavigational = true
+            return item
+        }
+        guard identifier == titleID else { return nil }
+        let item = NSToolbarItem(itemIdentifier: identifier)
+        item.label = "AirBattery"
+        item.isBordered = false
+        pageTitle.font = .systemFont(ofSize: 15, weight: .semibold)
+        pageTitle.lineBreakMode = .byTruncatingTail
+        pageTitle.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        item.view = pageTitle
+        return item
+    }
+}
 
+private struct AirBatterySidebar: View {
+    @ObservedObject var navigation: AirBatteryNavigation
+    @AppStorage("showDebug") private var showDebug = false
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(spacing: 10) {
+                Image(systemName: "battery.100")
+                    .font(.system(size: 23, weight: .medium))
+                    .foregroundColor(.accentColor)
+                Text("AirBattery").font(.system(size: 22, weight: .semibold, design: .rounded))
+            }
+            .padding(20)
+            .accessibilityAddTraits(.isHeader)
+            List(selection: $navigation.selectedItem) {
+                navigationRow("Devices")
+                Section(header: Text("Settings")) {
+                    ForEach(AirBatteryNavigation.settingsPages, id: \.self) { navigationRow($0) }
+                }
+                if showDebug { navigationRow("Debug") }
+            }
+            .listStyle(.sidebar)
+
+        }
+        .onChange(of: showDebug) { visible in
+            if !visible && navigation.selectedItem == "Debug" { navigation.selectedItem = "General" }
+        }
+    }
+    private func navigationRow(_ page: String) -> some View {
+        Label(LocalizedStringKey(AirBatteryNavigation.title(page)), systemImage: AirBatteryNavigation.symbol(page))
+            .padding(.vertical, 6)
+            .tag(page)
+    }
+}
+
+private struct AirBatteryDetail: View {
+    @ObservedObject var navigation: AirBatteryNavigation
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     var body: some View {
         Group {
-            if #available(macOS 13.0, *) {
-                NavigationSplitView {
-                    List(selection: $selectedItem) {
-                        ForEach(pages + (showDebug ? ["Debug"] : []), id: \.self) { page in
-                            Label(title(page), systemImage: symbol(page))
-                                .padding(.vertical, 5)
-                                .tag(page)
-                        }
-                    }
-                    .listStyle(.sidebar)
-                    .navigationSplitViewColumnWidth(min: 180, ideal: 210, max: 260)
-                } detail: {
-                    destination(selectedItem ?? "General")
-                        .navigationTitle(title(selectedItem ?? "General"))
+            switch navigation.selectedItem ?? "Devices" {
+            case "General": GeneralView()
+            case "Display": DisplayView()
+            case "Nearbility": NearbilityView()
+            case "Nearcast": NearcastView()
+            case "Widget": WidgetView()
+            case "Blocklist": BlacklistView()
+            case "Debug": DebugView(selectedItem: $navigation.selectedItem)
+            default: AirBatteryOverview()
+            }
+        }
+        .id(navigation.selectedItem)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .background(Color(NSColor.windowBackgroundColor))
+        .animation(reduceMotion ? nil : .easeInOut(duration: 0.16), value: navigation.selectedItem)
+    }
+}
+
+private struct AirBatteryOverview: View {
+    @State private var devices: [Device] = []
+    private func refresh() {
+        var snapshot = AirBatteryModel.getAll()
+        let internalBattery = InternalBattery.status
+        if internalBattery.hasBattery { snapshot.insert(ib2ab(internalBattery), at: 0) }
+        devices = snapshot
+    }
+    var body: some View {
+        SForm {
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Your Batteries").font(.system(size: 28, weight: .bold, design: .rounded))
+                Text("Battery levels at a glance.").foregroundColor(.secondary)
+            }
+            if devices.isEmpty {
+                SGroupBox {
+                    VStack(spacing: 12) {
+                        Image(systemName: "battery.0").font(.system(size: 36)).foregroundColor(.secondary)
+                        Text("No Battery Data").font(.headline)
+                        Text("Connect a device or check discovery settings.")
+                            .foregroundColor(.secondary).multilineTextAlignment(.center)
+                    }.frame(maxWidth: .infinity).padding(.vertical, 40)
                 }
             } else {
-                NavigationView {
-                    List {
-                        ForEach(pages + (showDebug ? ["Debug"] : []), id: \.self) { page in
-                            NavigationLink(destination: destination(page), tag: page, selection: $selectedItem) {
-                                Label(title(page), systemImage: symbol(page))
-                                    .padding(.vertical, 5)
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: 210), spacing: 18)], spacing: 18) {
+                    ForEach(devices, id: \.deviceName) { device in
+                        VStack(alignment: .leading, spacing: 18) {
+                            HStack {
+                                Image(getDeviceIcon(device)).resizable().scaledToFit()
+                                    .frame(width: 36, height: 36)
+                                Spacer()
+                                if device.acPowered || device.isCharging != 0 {
+                                    Image(systemName: "bolt.fill").foregroundColor(.secondary)
+                                        .accessibilityLabel(Text("External Power"))
+                                }
                             }
+                            Text(device.deviceName).font(.headline).lineLimit(2)
+                                .frame(height: 38, alignment: .topLeading)
+                            HStack(alignment: .firstTextBaseline) {
+                                Text(device.hasBattery ? "\(device.batteryLevel)%" : "—")
+                                    .font(.system(size: 30, weight: .semibold, design: .rounded))
+                                    .monospacedDigit()
+                                Spacer()
+                                if device.lastUpdate > 0 {
+                                    Text(Date(timeIntervalSince1970: device.lastUpdate), style: .relative)
+                                        .font(.caption).foregroundColor(.secondary).lineLimit(1)
+                                        .help("Last Updated")
+                                }
+                            }
+                            ProgressView(value: Double(min(100, max(0, device.batteryLevel))), total: 100)
+                                .accentColor(Color(getPowerColor(device)))
+                                .accessibilityLabel(Text("Battery Level"))
                         }
-                    }.listStyle(.sidebar)
-                    destination("General")
+                        .padding(20)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .airBatteryPanel(cornerRadius: 18)
+                    }
                 }
             }
         }
-        .frame(minWidth: 720, idealWidth: 780, minHeight: 540, idealHeight: 600)
-        .onChange(of: showDebug) { visible in
-            if !visible && selectedItem == "Debug" { selectedItem = "General" }
-        }
+        .onAppear(perform: refresh)
+        .onReceive(mainTimer) { _ in refresh() }
     }
 }
 
@@ -149,20 +315,35 @@ struct GeneralView: View {
                 }.onAppear { cltInstalled = CommandLineTool.isInstalled() }
             }
             SGroupBox(label: "Update") { UpdaterSettingsView(updater: updaterController.updater) }
-            VStack(spacing: 8) {
-                CheckForUpdatesView(updater: updaterController.updater)
-                if let appVersion = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String {
-                    Text("AirBattery v\(appVersion)")
-                        .font(.subheadline)
-                        .foregroundColor(.secondary)
-                        .onTapGesture {
-                            debugCount += 1
-                            if debugCount > 9 {
-                                debugCount = 0
-                                showDebug.toggle()
-                            }
+            SGroupBox(label: "About") {
+                HStack(spacing: 16) {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("AirBattery").font(.title2.weight(.semibold))
+                        if let appVersion = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String {
+                            Text("Version \(appVersion)")
+                                .font(.subheadline)
+                                .foregroundColor(.secondary)
+                                .onTapGesture {
+                                    debugCount += 1
+                                    if debugCount > 9 {
+                                        debugCount = 0
+                                        showDebug.toggle()
+                                    }
+                                }
                         }
+                    }
+                    Spacer()
                 }
+                Divider().opacity(0.5)
+                VStack(alignment: .leading, spacing: 8) {
+                    Link(destination: URL(string: "https://github.com/deoxyribonucleic-acid/AirBattery")!) {
+                        Label("Forked version by deoxyribonucleic-acid", systemImage: "arrow.triangle.branch")
+                            .font(.subheadline.weight(.medium))
+                    }
+                    .help("Fork Repository")
+                    Link("Based on lihaoyun6/AirBattery", destination: URL(string: "https://github.com/lihaoyun6/AirBattery")!)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
     }
