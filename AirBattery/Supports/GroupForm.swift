@@ -27,20 +27,16 @@ struct HoverButton<Content: View>: View {
 
 struct SForm<Content: View>: View {
     var spacing: CGFloat = 30
-    var noSpacer: Bool = false
     @ViewBuilder let content: () -> Content
     
     var body: some View {
-        VStack(spacing: spacing) {
-            content()
-            if !noSpacer {
-                Spacer().frame(minHeight: 0)
+        ScrollView {
+            VStack(alignment: .leading, spacing: spacing) {
+                content()
             }
+            .padding(24)
+            .frame(maxWidth: .infinity, alignment: .topLeading)
         }
-        .padding(.bottom, noSpacer ? 0 : -spacing)
-        .padding()
-        .frame(maxWidth: .infinity)
-        
     }
 }
 
@@ -49,8 +45,17 @@ struct SGroupBox<Content: View>: View {
     @ViewBuilder let content: () -> Content
 
     var body: some View {
-        GroupBox(label: label != nil ? Text(label!).font(.headline) : nil) {
-            VStack(spacing: 10) { content() }.padding(5)
+        VStack(alignment: .leading, spacing: 10) {
+            if let label = label {
+                Text(label).font(.headline).padding(.leading, 4)
+            }
+            VStack(spacing: 12) { content() }
+                .padding(16)
+                .frame(maxWidth: .infinity)
+                .background(Color.primary.opacity(0.035))
+                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .strokeBorder(Color.primary.opacity(0.07)))
         }
     }
 }
@@ -65,7 +70,7 @@ struct SItem<Content: View>: View {
             if let label = label { Text(label) }
             Spacer()
             content()
-        }.frame(height: 16)
+        }.frame(minHeight: 28)
     }
 }
 
@@ -94,7 +99,7 @@ struct SSlider: View {
                 let modulo: Int = base % 1
                 value = base - modulo
             }), in: range).frame(maxWidth: width)
-        }.frame(height: 16)
+        }.frame(minHeight: 28)
     }
 }
 
@@ -144,7 +149,8 @@ struct SButton: View {
             if let tips = tips { SInfoButton(tips: tips) }
             Button(buttonTitle,
                    action: { action() })
-        }.frame(height: 16)
+                .airBatteryActionStyle()
+        }.frame(minHeight: 28)
     }
 }
 
@@ -200,7 +206,7 @@ struct SPicker<T: Hashable, Content: View, Style: PickerStyle>: View {
                 .fixedSize()
                 .pickerStyle(style)
                 .buttonStyle(.borderless)
-        }.frame(height: 16)
+        }.frame(minHeight: 28)
     }
 }
 
@@ -222,9 +228,10 @@ struct SToggle: View {
             if let tips = tips { SInfoButton(tips: tips) }
             Toggle("", isOn: $isOn)
                 .toggleStyle(.switch)
-                .scaleEffect(0.7)
-                .frame(width: 32)
-        }.frame(height: 16)
+                .controlSize(.small)
+                .labelsHidden()
+                .accessibilityLabel(Text(title))
+        }.frame(minHeight: 28)
     }
 }
 
@@ -263,6 +270,45 @@ struct SSteper: View {
                 }
             Stepper("", value: $value)
                 .padding(.leading, -6)
-        }.frame(height: 16)
+        }.frame(minHeight: 28)
+    }
+}
+
+// Shared floating surfaces. System material handles contrast and transparency;
+// content cards deliberately use a quieter fill rather than stacked glass.
+struct AirBatteryPanelSurface: ViewModifier {
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+    var cornerRadius: CGFloat
+
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        if reduceTransparency {
+            content.background(Color(NSColor.windowBackgroundColor))
+                .clipShape(RoundedRectangle(cornerRadius: cornerRadius))
+        } else if #available(macOS 26.0, *) {
+            content.glassEffect(.regular, in: RoundedRectangle(cornerRadius: cornerRadius))
+        } else {
+            content.background(BlurView(material: .popover))
+                .clipShape(RoundedRectangle(cornerRadius: cornerRadius))
+        }
+    }
+}
+
+extension View {
+    func airBatteryPanel(cornerRadius: CGFloat = 20) -> some View {
+        modifier(AirBatteryPanelSurface(cornerRadius: cornerRadius))
+    }
+
+    @ViewBuilder
+    func airBatteryActionStyle(prominent: Bool = false) -> some View {
+        if #available(macOS 26.0, *) {
+            if prominent { buttonStyle(.glassProminent) }
+            else { buttonStyle(.glass) }
+        } else if #available(macOS 12.0, *) {
+            if prominent { buttonStyle(.borderedProminent) }
+            else { buttonStyle(.bordered) }
+        } else {
+            buttonStyle(.bordered)
+        }
     }
 }

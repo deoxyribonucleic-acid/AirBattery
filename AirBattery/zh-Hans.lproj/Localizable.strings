@@ -155,3 +155,11 @@
 "Uninstall" = "卸载";
 "Install" = "安装";
 "After installation, you can run \"airbattery\" in yor terminal to list all devices." = "安装此工具后, 在命令行中执行\"airbattery\"即可列出所有设备.";
+
+"Classic macOS" = "经典 macOS";
+"Modern macOS / iOS" = "现代 macOS / iOS";
+
+"Always" = "始终";
+
+"Batteries · Liquid Glass" = "电量 · Liquid Glass";
+"Batteries · Background" = "电量 · 带背景";

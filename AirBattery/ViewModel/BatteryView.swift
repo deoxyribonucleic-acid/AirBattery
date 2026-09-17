@@ -61,12 +61,15 @@ struct mainBatteryView: View {
     @AppStorage("test_full") var test_full = false
     @AppStorage("test_iblevel") var test_iblevel = 100
     
+    // -1 is the explicit Always option, including at 0% battery.
+    private var hidePercentage: Bool { hideLevel == -1 || item.batteryLevel > hideLevel }
+
     @State var factor = 0.0
     
     var body: some View {
         HStack(alignment: .center, spacing:4){
             if item.hasBattery && intBattOnStatusBar {
-                if batteryPercent == "outside" && !(item.batteryLevel > hideLevel) {
+                if batteryPercent == "outside" && !hidePercentage {
                     Text("\(item.batteryLevel)%").font(.system(size: 11))
                 }
                 if !iosBatteryStyle {
@@ -77,7 +80,7 @@ struct mainBatteryView: View {
                         } else {
                             Image("batt_outline")
                         }
-                        if batteryPercent == "inside" && !(item.batteryLevel > hideLevel) {
+                        if batteryPercent == "inside" && !hidePercentage {
                             BatteryLevelView(item: item)
                                 .scaleEffect(0.9)
                                 .foregroundColor(colorfulBattery ? Color(getPowerColor(ib2ab(item))) : .primary)
@@ -101,27 +104,22 @@ struct mainBatteryView: View {
                     }.compositingGroup()
                 } else {
                     ZStack(alignment: .leading) {
+                        // SVG viewBox: 73.6 wide; body ends at x=65.6.
+                        // The terminal (x=68.7...73.2) is a fixed part of the shell.
+                        let bodyWidth: CGFloat = 27 * 65.6 / 73.6
+                        let fillWidth = bodyWidth * CGFloat(min(100, max(0, item.batteryLevel))) / 100
                         Image("battery.100percent")
                             .resizable().scaledToFit()
                             .frame(width: 27)
                             .opacity(0.4)
-                            .mask (
-                                HStack {
-                                    Spacer().frame(minWidth: 0)
-                                    Rectangle().frame(width: min(25, CGFloat(100 - item.batteryLevel) / 100 * 27))
-                                }
-                            )
                         Image("battery.100percent")
                             .resizable().scaledToFit()
                             .foregroundColor(colorfulBattery ? Color(getPowerColor(ib2ab(item)) + "2") : (item.batteryLevel <= 10 ? .red : .primary))
                             .frame(width: 27)
-                            .mask (
-                                HStack {
-                                    Rectangle().frame(width: max(2, CGFloat(item.batteryLevel) / 100 * 27))
-                                    Spacer().frame(minWidth: 0)
-                                }
-                            )
-                        if batteryPercent == "inside" && !(item.batteryLevel > hideLevel) {
+                            .mask(alignment: .leading) {
+                                Rectangle().frame(width: fillWidth)
+                            }
+                        if batteryPercent == "inside" && !hidePercentage {
                             if colorfulBattery {
                                 BatteryLevelView(item: item)
                                     .foregroundColor(.white)
@@ -164,7 +162,7 @@ struct mainBatteryView: View {
                     if batteryPercent != "outside" {
                         if width != 42 { setStatusBar(width: 42) }
                     } else {
-                        if item.batteryLevel > hideLevel {
+                        if hidePercentage {
                             if width != 42 { setStatusBar(width: 42) }
                         } else {
                             if width != 76 { setStatusBar(width: 76) }

@@ -201,36 +201,6 @@ struct MultiBatteryView: View {
             darkMode = getDarkMode()
             NSApp.dockTile.display()
         }
-        .onReceive(alertTimer) {_ in batteryAlert() }
-        .onReceive(widgetViewTimer) {_ in
-            if widgetInterval != -1 { WidgetCenter.shared.reloadAllTimelines() }
-        }
-        .onReceive(dockTimer) {_ in IDeviceBattery.shared.scanDevices() }
-        .onReceive(widgetDataTimer) {_ in
-            SPBluetoothDataModel.shared.refeshData (completion: { result in
-                DispatchQueue.global(qos: .background).async {
-                    MagicBattery.shared.scanDevices()
-                    AirBatteryModel.writeData()
-                }
-            }, error: {
-                AirBatteryModel.writeData()
-            })
-        }
-        .onReceive(nearCastTimer) {_ in
-            if nearCast && ncGroupID != ""{
-                var allDevices = AirBatteryModel.getAll()
-                allDevices.insert(ib2ab(InternalBattery.status), at: 0)
-                do {
-                    let jsonData = try JSONEncoder().encode(allDevices)
-                    guard let jsonString = String(data: jsonData, encoding: .utf8) else { return }
-                    guard let data = encryptString(jsonString, password: ncGroupID) else { return }
-                    let message = NCMessage(id: String(ncGroupID.prefix(15)), sender: systemUUID ?? deviceName, command: "", content: data)
-                    netcastService.sendMessage(message)
-                } catch {
-                    print("Write JSON error：\(error)")
-                }
-            }
-        }
         .onReceive(dockTimer) { t in
             if showOn == "both" || showOn == "dock" {
                 var list = AirBatteryModel.getAll()
@@ -305,9 +275,15 @@ struct popover: View {
     @State private var pinnedList = (ud.object(forKey: "pinnedList") ?? []) as! [String]
     @State private var allNearcast = getFiles(withExtension: "json", in: ncFolder)
     
+    init(fromDock: Bool = false, allDevice: [Device]) {
+        self.fromDock = fromDock
+        self.allDevice = allDevice
+        _allDevices = State(initialValue: allDevice)
+    }
+
     var body: some View {
         ZStack{
-            if fromDock { Color.clear.background(BlurView(material: .menu)) }
+            if fromDock { Color.clear.airBatteryPanel() }
             VStack(spacing: 0){
                 if !fromDock {
                     Color.clear
@@ -320,19 +296,20 @@ struct popover: View {
                             }
                         }
                 }
-                HStack(spacing: 4){
+                HStack(spacing: 8){
                     if !fromDock {
                         Button(action: {
                             NSApp.terminate(self)
                         }, label: {
                             Image(systemName: "xmark.circle")
                                 .font(.system(size: 14, weight: .light))
-                                .frame(width: 14, height: 14, alignment: .center)
+                                .frame(width: 26, height: 26, alignment: .center)
                                 .foregroundColor(overQuitButton ? .red : .secondary)
                                 .opacity(overQuitButton ? 1 : 0.7)
                         })
-                        .focusable(false)
-                        .buttonStyle(PlainButtonStyle())
+                                                .airBatteryActionStyle()
+                        .help(fromDock ? "Close" : "Quit AirBattery")
+                        .accessibilityLabel(Text(fromDock ? "Close" : "Quit AirBattery"))
                         .onHover{ hovering in overQuitButton = hovering }
                     } else {
                         Button(action: {
@@ -340,12 +317,13 @@ struct popover: View {
                         }, label: {
                             Image(systemName: "minus.circle")
                                 .font(.system(size: 14, weight: .light))
-                                .frame(width: 14, height: 14, alignment: .center)
+                                .frame(width: 26, height: 26, alignment: .center)
                                 .foregroundColor(overQuitButton ? .myYellow : .secondary)
                                 .opacity(overQuitButton ? 1 : 0.7)
                         })
-                        .focusable(false)
-                        .buttonStyle(PlainButtonStyle())
+                                                .airBatteryActionStyle()
+                        .help(fromDock ? "Close" : "Quit AirBattery")
+                        .accessibilityLabel(Text(fromDock ? "Close" : "Quit AirBattery"))
                         .onHover{ hovering in overQuitButton = hovering }
                     }
                     
@@ -359,12 +337,13 @@ struct popover: View {
                     }, label: {
                         Image(systemName: "info.circle")
                             .font(.system(size: 14, weight: .light))
-                            .frame(width: 14, height: 14, alignment: .center)
+                            .frame(width: 26, height: 26, alignment: .center)
                             .foregroundColor(overInfoButton ? .accentColor : .secondary)
                             .opacity(overInfoButton ? 1 : 0.7)
                     })
-                    .focusable(false)
-                    .buttonStyle(PlainButtonStyle())
+                                        .airBatteryActionStyle()
+                    .help("About AirBattery")
+                    .accessibilityLabel(Text("About AirBattery"))
                     .onHover{ hovering in overInfoButton = hovering }
                     Button(action: {
                         dockWindow.orderOut(nil)
@@ -373,12 +352,13 @@ struct popover: View {
                     }, label: {
                         Image(systemName: "gearshape")
                             .font(.system(size: 13.6, weight: .light))
-                            .frame(width: 14, height: 14, alignment: .center)
+                            .frame(width: 26, height: 26, alignment: .center)
                             .foregroundColor(overSettButton ? .accentColor : .secondary)
                             .opacity(overSettButton ? 1 : 0.7)
                     })
-                    .focusable(false)
-                    .buttonStyle(PlainButtonStyle())
+                                        .airBatteryActionStyle()
+                    .help("Settings")
+                    .accessibilityLabel(Text("Settings"))
                     .onHover{ hovering in overSettButton = hovering }
                     Spacer()
                     if nearCast {
@@ -397,17 +377,18 @@ struct popover: View {
                         }, label: {
                             Image(systemName: "antenna.radiowaves.left.and.right.circle")
                                 .font(.system(size: 14, weight: .light))
-                                .frame(width: 14, height: 14, alignment: .center)
+                                .frame(width: 26, height: 26, alignment: .center)
                                 .foregroundColor(overReloButton ? .accentColor : .secondary)
                                 .opacity(overReloButton ? 1 : 0.7)
                         })
-                        .focusable(false)
-                        .buttonStyle(PlainButtonStyle())
+                                                .airBatteryActionStyle()
+                        .help("Reload")
+                        .accessibilityLabel(Text("Reload"))
                         .onHover{ hovering in overReloButton = hovering }
                     }
                 }
-                .offset(y: -3.5)
-                .padding(.horizontal, 5)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 8)
                 .onHover{ hovering in (overStack, overStack2) = (-1, -1) }
                 VStack(alignment:.leading,spacing: 0) {
                     if allDevices.count < 1 && hiddenDevices.count < 1{
@@ -415,22 +396,22 @@ struct popover: View {
                             /*Image(systemName: "exclamationmark.circle")
                              .resizable()
                              .aspectRatio(contentMode: .fit)
-                             .foregroundColor(.blackWhite)
+                             .foregroundColor(.primary)
                              .frame(width: 20, height: 20, alignment: .center)
                              Text("No Device Found!")
                              .font(.system(size: 12))
-                             .foregroundColor(.blackWhite)
+                             .foregroundColor(.primary)
                              .frame(height: 24, alignment: .center)
                              .padding(.horizontal, 8)*/
                             let ib = ib2ab(InternalBattery.status)
                             Image(getDeviceIcon(ib))
                                 .resizable()
                                 .aspectRatio(contentMode: .fit)
-                                .foregroundColor(.blackWhite)
+                                .foregroundColor(.primary)
                                 .frame(width: 22, height: 22, alignment: .center)
                             Text("\(ib.deviceName)")
                                 .font(.system(size: 12))
-                                .foregroundColor(.blackWhite)
+                                .foregroundColor(.primary)
                                 .frame(height: 24, alignment: .center)
                                 .padding(.horizontal, 7)
                             Spacer()
@@ -440,9 +421,9 @@ struct popover: View {
                         .onHover{ hovering in
                             overStack2 = -1
                             overStackNC = -1
-                            if hovering { overStack = 0 }
+                            overStack = hovering ? 0 : -1
                         }
-                        .background(overStack == 0 ? Color.blackWhite.opacity(0.15) : .clear)
+                        .background(overStack == 0 ? Color.primary.opacity(0.08) : .clear)
                         if hiddenDevices.count > 0 { Divider() }
                     }
                     ForEach(allDevices.indices, id: \.self) { index in
@@ -462,23 +443,23 @@ struct popover: View {
                                     Image(getDeviceIcon(allDevices[index]))
                                         .resizable()
                                         .aspectRatio(contentMode: .fit)
-                                        .foregroundColor(.blackWhite)
+                                        .foregroundColor(.primary)
                                         .frame(width: 22, height: 22, alignment: .center)
                                     HStack(spacing: 1) {
                                         Text("\(((Date().timeIntervalSince1970 - allDevices[index].lastUpdate) / 60) > 10 ? "⚠︎ " : "")\(allDevices[index].deviceName)")
                                             .font(.system(size: 12))
-                                            .foregroundColor(.blackWhite)
+                                            .foregroundColor(.primary)
                                             .frame(height: 24, alignment: .center)
                                         Spacer().frame(width: 0.5)
                                         if alertList.map({$0.name}).contains(allDevices[index].deviceName) {
                                             Image(systemName: "bell.fill")
                                                 .font(.system(size: 10))
-                                                .foregroundColor(.blackWhite)
+                                                .foregroundColor(.primary)
                                         }
                                         if pinnedList.contains(allDevices[index].deviceName) {
                                             Image(systemName: "pin.fill")
                                                 .font(.system(size: 10))
-                                                .foregroundColor(.blackWhite)
+                                                .foregroundColor(.primary)
                                                 .offset(y: 0.2)
                                         }
                                     }.padding(.horizontal, 7)
@@ -625,12 +606,12 @@ struct popover: View {
                                 }
                                 .padding(.vertical, 6)
                                 .padding(.horizontal, 10)
-                                .background(overStack == index ? Color.blackWhite.opacity(0.15) : .clear)//.cornerRadius(4)
-                                .clipShape(RoundedCornersShape(radius: 2.9, corners: index == allDevices.count - (hiddenDevices.count > 0 ? 0 : 1) ? [.bottomLeft, .bottomRight] : (index == 0 ? [.topLeft, .topRight] : [])))
+                                .background(overStack == index ? Color.primary.opacity(0.08) : .clear)//.cornerRadius(4)
+                                .clipShape(RoundedCornersShape(radius: 11, corners: index == allDevices.count - (hiddenDevices.count > 0 ? 0 : 1) ? [.bottomLeft, .bottomRight] : (index == 0 ? [.topLeft, .topRight] : [])))
                                 .onHover{ hovering in
                                     overStack2 = -1
                                     overStackNC = -1
-                                    if overStack != index { overStack = index }
+                                    overStack = hovering ? index : -1
                                 }
                                 /*.contextMenu{
                                     if nearCast && ["Trackpad", "Keyboard", "Mouse", "MMouse"].contains(allDevices[index].deviceType) {
@@ -716,12 +697,12 @@ struct popover: View {
                             Image("sunglasses.fill")
                                 .resizable()
                                 .aspectRatio(contentMode: .fit)
-                                .foregroundColor(.blackWhite)
+                                .foregroundColor(.primary)
                                 .frame(width: 22, height: 22, alignment: .center)
                                 .padding(.vertical, 6)
                             Text("Hidden Device:")
                                 .font(.system(size: 12))
-                                .foregroundColor(.blackWhite)
+                                .foregroundColor(.primary)
                                 .frame(height: 24, alignment: .center)
                                 .padding(.horizontal, 10)
                             Spacer()
@@ -743,11 +724,11 @@ struct popover: View {
                                             .frame(width: 20, height: 20, alignment: .center)
                                             .padding(.vertical, 4)
                                             .padding(.horizontal, 4)
-                                            .background(overStack2 == index ? Color.blackWhite.opacity(0.15) : .clear).cornerRadius(2.5)
+                                            .background(overStack2 == index ? Color.primary.opacity(0.08) : .clear).cornerRadius(2.5)
                                             .onHover{ hovering in
                                                 overStack = -1
                                                 overStackNC = -1
-                                                if overStack2 != index { overStack2 = index }
+                                                overStack2 = hovering ? index : -1
                                             }
                                     })
                                     .buttonStyle(.plain)
@@ -763,7 +744,7 @@ struct popover: View {
                 }
                 .padding(.horizontal, 6)
                 .overlay(
-                    RoundedRectangle(cornerRadius: 4, style: .continuous)
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
                         .strokeBorder(Color.secondary, lineWidth: 1)
                         .padding(.vertical, -1)
                         .padding(.horizontal, 5)
@@ -796,6 +777,9 @@ struct popover: View {
             }
         }
         .frame(width: 352)
+        .onHover { hovering in
+            if !hovering { (overStack, overStack2, overStackNC) = (-1, -1, -1) }
+        }
         .onAppear { allDevices = allDevice }
         .onReceive(mainTimer) { t in
             if !fromDock && menuPopover.isShown {
@@ -831,24 +815,24 @@ struct nearcastView: View {
                         Image(getDeviceIcon(devices[index]))
                             .resizable()
                             .aspectRatio(contentMode: .fit)
-                            .foregroundColor(.blackWhite)
+                            .foregroundColor(.primary)
                             .frame(width: 22, height: 22, alignment: .center)
                         HStack(spacing: 1) {
                             Text("\(((Date().timeIntervalSince1970 - devices[index].lastUpdate) / 60) > 10 ? "⚠︎ " : "")\(devices[index].deviceName)")
                                 .font(.system(size: 12))
-                                .foregroundColor(.blackWhite)
+                                .foregroundColor(.primary)
                                 .frame(height: 24, alignment: .center)
                                 .padding(.horizontal, 7)
                             Spacer().frame(width: 0.5)
                             if alertList.map({$0.name}).contains(devices[index].deviceName) {
                                 Image(systemName: "bell.fill")
                                     .font(.system(size: 10))
-                                    .foregroundColor(.blackWhite)
+                                    .foregroundColor(.primary)
                             }
                             if pinnedList.contains(devices[index].deviceName) {
                                 Image(systemName: "pin.fill")
                                     .font(.system(size: 10))
-                                    .foregroundColor(.blackWhite)
+                                    .foregroundColor(.primary)
                                     .offset(y: 0.2)
                             }
                         }.padding(.horizontal, 7)
@@ -958,17 +942,20 @@ struct nearcastView: View {
                     }
                     .padding(.vertical, 6)
                     .padding(.horizontal, 10)
-                    .onHover{ hovering in overStack = index }
+                    .onHover { hovering in overStack = hovering ? index : -1 }
                 }
-                .background((overStackNC == mainIndex && overStack == index) ? Color.blackWhite.opacity(0.15) : .clear)
-                .clipShape(RoundedCornersShape(radius: 2.9, corners: index == devices.count - 1 ? [.bottomLeft, .bottomRight] : (index == 0 ? [.topLeft, .topRight] : [])))
+                .background((overStackNC == mainIndex && overStack == index) ? Color.primary.opacity(0.08) : .clear)
+                .clipShape(RoundedCornersShape(radius: 11, corners: index == devices.count - 1 ? [.bottomLeft, .bottomRight] : (index == 0 ? [.topLeft, .topRight] : [])))
                 if index != devices.count-1 { Divider() }
             }
         }
-        .onHover{ hovering in overStackNC = mainIndex }
+        .onHover { hovering in
+            overStackNC = hovering ? mainIndex : -1
+            if !hovering { overStack = -1 }
+        }
         .padding(.horizontal, 6)
         .overlay(
-            RoundedRectangle(cornerRadius: 4)
+            RoundedRectangle(cornerRadius: 12)
                 .strokeBorder(Color.secondary, lineWidth: 1)
                 .padding(.vertical, -1)
                 .padding(.horizontal, 5)
@@ -984,16 +971,30 @@ func openAboutPanel() {
     NSApp.orderFrontStandardAboutPanel(nil)
 }
 
+// A single explicit window avoids relying on the position of a SwiftUI menu
+// item, which changed on Tahoe. Both the toolbar and Cmd+, use this entry point.
+@MainActor
+private var settingsWindowController: NSWindowController?
+
+@MainActor
 func openSettingPanel() {
     dockWindow.orderOut(nil)
-    NSApp.activate(ignoringOtherApps: true)
-    if #available(macOS 14, *) {
-        NSApp.mainMenu?.items.first?.submenu?.item(at: 2)?.performAction()
-    }else if #available(macOS 13, *) {
-        NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
-    } else {
-        NSApp.sendAction(Selector(("showPreferencesWindow:")), to: nil, from: nil)
+    menuPopover.performClose(nil)
+    if settingsWindowController == nil {
+        let controller = NSHostingController(rootView: SettingsView())
+        let window = NSWindow(contentViewController: controller)
+        window.title = "AirBattery Settings".local
+        window.styleMask = [.titled, .closable, .miniaturizable, .resizable]
+        window.setContentSize(NSSize(width: 780, height: 600))
+        window.minSize = NSSize(width: 720, height: 540)
+        window.isReleasedWhenClosed = false
+        window.setFrameAutosaveName("AirBatterySettings")
+        window.center()
+        settingsWindowController = NSWindowController(window: window)
     }
+    settingsWindowController?.showWindow(nil)
+    settingsWindowController?.window?.makeKeyAndOrderFront(nil)
+    NSApp.activate(ignoringOtherApps: true)
 }
 
 func findNSSplitVIew(view: NSView?) -> NSSplitView? {

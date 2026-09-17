@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		AB0000000000000000000001 /* WidgetGlassBackground.m in Sources */ = {isa = PBXBuildFile; fileRef = AB0000000000000000000002; };
 		180A51B82B84DC3700CF2D15 /* libimobiledevice in Resources */ = {isa = PBXBuildFile; fileRef = 180A51B72B84DC3700CF2D15 /* libimobiledevice */; };
 		180B1C0E2C1204E400DDB570 /* AppIntent.swift in Sources */ = {isa = PBXBuildFile; fileRef = 180B1C0D2C12017400DDB570 /* AppIntent.swift */; };
 		1819E94C2CC2A8C2007B95E9 /* BatteryAlertView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1819E94B2CC2A8C2007B95E9 /* BatteryAlertView.swift */; };
@@ -116,6 +117,7 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		AB0000000000000000000002 /* WidgetGlassBackground.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = WidgetGlassBackground.m; sourceTree = "<group>"; };
 		180A51B72B84DC3700CF2D15 /* libimobiledevice */ = {isa = PBXFileReference; lastKnownFileType = folder; name = libimobiledevice; path = AirBattery/libimobiledevice; sourceTree = "<group>"; };
 		180B1C0D2C12017400DDB570 /* AppIntent.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppIntent.swift; sourceTree = "<group>"; };
 		1819E94B2CC2A8C2007B95E9 /* BatteryAlertView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BatteryAlertView.swift; sourceTree = "<group>"; };
@@ -312,6 +314,7 @@
 			isa = PBXGroup;
 			children = (
 				18892A8D2B81F8320017377E /* widgetBundle.swift */,
+				AB0000000000000000000002 /* WidgetGlassBackground.m */,
 				180B1C0D2C12017400DDB570 /* AppIntent.swift */,
 				18892A8F2B81F8320017377E /* BatteryWidget.swift */,
 				18B8E5C82B83C9AD00A20D03 /* BatteryWidget2.swift */,
@@ -575,6 +578,7 @@
 				18EF7E632C141CB70065A9E1 /* BatteryWidget3.swift in Sources */,
 				18892AA32B82F09C0017377E /* InternalBattery.swift in Sources */,
 				18892A8E2B81F8320017377E /* widgetBundle.swift in Sources */,
+				AB0000000000000000000001 /* WidgetGlassBackground.m in Sources */,
 				18892A902B81F8320017377E /* BatteryWidget.swift in Sources */,
 				180B1C0E2C1204E400DDB570 /* AppIntent.swift in Sources */,
 				18B8E5C92B83C9AD00A20D03 /* BatteryWidget2.swift in Sources */,

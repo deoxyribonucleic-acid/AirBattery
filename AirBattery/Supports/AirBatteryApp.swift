@@ -10,6 +10,7 @@ import WidgetKit
 import UserNotifications
 import IOBluetooth
 import Sparkle
+import ServiceManagement
 
 let fd = FileManager.default
 let ud = UserDefaults.standard
@@ -49,17 +50,70 @@ struct AirBatteryApp: App {
                                 guard let nsSplitView = findNSSplitVIew(view: w.contentView),
                                       let controller = nsSplitView.delegate as? NSSplitViewController else { return }
                                 controller.splitViewItems.first?.canCollapse = false
-                                controller.splitViewItems.first?.minimumThickness = 175
-                                controller.splitViewItems.first?.maximumThickness = 175
+                                controller.splitViewItems.first?.minimumThickness = 180
+                                controller.splitViewItems.first?.maximumThickness = 260
                                 w.orderFront(nil)
                             }
                         })
                 )
         }
+        .commands {
+            CommandGroup(replacing: .appSettings) {
+                Button("Settings…") { openSettingPanel() }
+                    .keyboardShortcut(",", modifiers: .command)
+            }
+        }
     }
 }
 
 class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUserNotificationCenterDelegate {
+    private var backgroundTimers: [Timer] = []
+    private let refreshQueue = DispatchQueue(label: "AirBattery.refresh", qos: .utility)
+    private var refreshRunning = false
+    private var pendingConnectionRefresh: DispatchWorkItem?
+
+    private func schedule(_ interval: TimeInterval, action: @escaping () -> Void) {
+        let timer = Timer(timeInterval: interval, repeats: true) { _ in action() }
+        RunLoop.main.add(timer, forMode: .common)
+        backgroundTimers.append(timer)
+    }
+
+    private func startBackgroundTasks() {
+        backgroundTimers.forEach { $0.invalidate() }
+        backgroundTimers.removeAll()
+        let interval = max(1, ud.integer(forKey: "updateInterval"))
+        schedule(5) { IDeviceBattery.shared.scanDevices() }
+        schedule(300) { batteryAlert() }
+        schedule(TimeInterval(24 * interval)) { [weak self] in self?.refreshBatteryData() }
+        schedule(TimeInterval(60 * interval)) {
+            if ud.integer(forKey: "widgetInterval") != -1 { WidgetCenter.shared.reloadAllTimelines() }
+        }
+        schedule(TimeInterval(60 * interval + 5)) {
+            let group = ud.string(forKey: "ncGroupID") ?? ""
+            guard ud.bool(forKey: "nearCast"), !group.isEmpty else { return }
+            var devices = AirBatteryModel.getAll()
+            devices.insert(ib2ab(InternalBattery.status), at: 0)
+            guard let json = try? JSONEncoder().encode(devices),
+                  let string = String(data: json, encoding: .utf8),
+                  let data = encryptString(string, password: group) else { return }
+            netcastService.sendMessage(NCMessage(id: String(group.prefix(15)), sender: systemUUID ?? (ud.string(forKey: "deviceName") ?? "Mac"), command: "", content: data))
+        }
+    }
+
+    private func refreshBatteryData(readLogs: Bool = false) {
+        // Called on main; coalesce timer and reconnect bursts rather than queue
+        // an unbounded backlog of system_profiler processes.
+        guard !refreshRunning else { return }
+        refreshRunning = true
+        refreshQueue.async {
+            SPBluetoothDataModel.shared.refeshData { _ in }
+            MagicBattery.shared.scanDevices()
+            if readLogs && ud.bool(forKey: "readBTHID") { LogReader.shared.run(.connect) }
+            AirBatteryModel.writeData()
+            DispatchQueue.main.async { self.refreshRunning = false }
+        }
+    }
+
     //static let shared = AppDelegate()
     @AppStorage("showOn") var showOn = "sbar"
     @AppStorage("machineType") var machineType = "mac"
@@ -91,7 +145,9 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUserNotifi
         
         if response.actionIdentifier == "DELAY_30_MIN" {
             let deviceName = response.notification.request.content.userInfo["customInfo"] as? String ?? ""
-            lowPowerNoteDelay[deviceName] = Date().timeIntervalSince1970 + 1800
+            DispatchQueue.main.async {
+                lowPowerNoteDelay[deviceName] = Date().timeIntervalSince1970 + 1800
+            }
         }
         completionHandler()
     }
@@ -110,18 +166,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUserNotifi
             if ibStatus.hasBattery { allDevices.insert(ib2ab(ibStatus), at: 0) }
             let contentViewSwiftUI = popover(fromDock: true, allDevice: allDevices)
             let contentView = NSHostingView(rootView: contentViewSwiftUI)
-            let hiddenRow = AirBatteryModel.getBlackList().count > 0 ? 1 : 0
-            let allNearcast = getFiles(withExtension: "json", in: ncFolder)
-            var ncCount = 0
-            var ncDeviceCount = 0
-            for jsonUrl in allNearcast {
-                let count = AirBatteryModel.ncGetAll(url: jsonUrl).count
-                if count != 0 {
-                    ncCount += 7
-                    ncDeviceCount += count
-                }
-            }
-            let menuHeight = CGFloat((max(max(allDevices.count,1)+ncDeviceCount,1)+hiddenRow)*37+30+ncCount)
+            let menuHeight = contentView.fittingSize.height
             let mouse = NSEvent.mouseLocation
             var menuX = mouse.x
             var menuY = mouse.y
@@ -162,7 +207,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUserNotifi
             dockWindow.isOpaque = false
             dockWindow.backgroundColor = NSColor.clear
             dockWindow.contentView?.wantsLayer = true
-            dockWindow.contentView?.layer?.cornerRadius = 7
+            dockWindow.contentView?.layer?.cornerRadius = 20
             dockWindow.contentView?.layer?.masksToBounds = true
             dockWindow.makeKeyAndOrderFront(nil)
         }
@@ -225,7 +270,9 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUserNotifi
         IOBluetoothDevice.register(forConnectNotifications: self, selector: #selector(deviceIsConnected(notification:fromDevice:)))
         NSAppleEventManager.shared().setEventHandler(self, andSelector: #selector(handleURLEvent(_:replyEvent:)), forEventClass: AEEventClass(kInternetEventClass), andEventID: AEEventID(kAEGetURL))
         //if let window = NSApplication.shared.windows.first { window.close() }
-        launchAtLogin = NSWorkspace.shared.runningApplications.contains { $0.bundleIdentifier == "com.lihaoyun6.AirBatteryHelper" }
+        if #available(macOS 13.0, *) {
+            launchAtLogin = [.enabled, .requiresApproval].contains(SMAppService.mainApp.status)
+        }
         print("⚙️ Launch AirBattery at login = \(launchAtLogin)")
         print("⚙️ Icon mode = \(showOn)")
         if ncGroupID != "" { if nearCast { netcastService.resume() } }
@@ -276,6 +323,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUserNotifi
     }
     
     func applicationDidFinishLaunching(_ aNotification: Notification) {
+        startBackgroundTasks()
         let opts: ProcessInfo.ActivityOptions = [.automaticTerminationDisabled, .suddenTerminationDisabled]
         keepAliveActivity = ProcessInfo.processInfo.beginActivity(options: opts, reason: "AirBattery menu bar monitoring")
 
@@ -303,6 +351,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUserNotifi
     }
     
     func applicationWillTerminate(_ notification: Notification) {
+        backgroundTimers.forEach { $0.invalidate() }
+        pendingConnectionRefresh?.cancel()
         if let act = keepAliveActivity { ProcessInfo.processInfo.endActivity(act) }
 
         _ = process(path: "/usr/bin/killall", arguments: ["idevicesyslog"])
@@ -323,38 +373,18 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUserNotifi
     }
     
     @objc func deviceIsConnected(notification: IOBluetoothUserNotification, fromDevice device: IOBluetoothDevice) {
-        if readBTHID {
-            let now = Date()
-            if now.timeIntervalSince(startTime) >= 10 {
-                if let name = device.name, let macAdd = device.addressString {
-                    if AirBatteryModel.checkIfBlocked(name: name) { return }
-                    //if let prefix = getFirstNCharacters(of: macAdd, count: 8) {
-                        print("ℹ️ \(name) (\(macAdd)) connected")
-                        DispatchQueue.global(qos: .background).async {
-                            usleep(2500000)
-                            //if !appleMacPrefix.contains(prefix) {
-                            if !device.isAppleDevice {
-                                SPBluetoothDataModel.shared.refeshData { _ in
-                                    LogReader.shared.run(.connect)
-                                    MagicBattery.shared.getIOBTBattery()
-                                    MagicBattery.shared.getOtherBTBattery()
-                                }
-                            } else {
-                                if let device = AirBatteryModel.getByName(name) {
-                                    if ["Trackpad", "Keyboard", "MMouse", "Mouse"].contains(device.deviceType) {
-                                        SPBluetoothDataModel.shared.refeshData { _ in MagicBattery.shared.scanDevices() }
-                                    }
-                                } else {
-                                    SPBluetoothDataModel.shared.refeshData { _ in MagicBattery.shared.scanDevices() }
-                                }
-                            }
-                        }
-                    //}
-                }
-            }
+        // Snapshot values while the callback owns the IOBluetooth object. Never
+        // capture it in a delayed background closure.
+        guard let name = device.name, !AirBatteryModel.checkIfBlocked(name: name) else { return }
+        DispatchQueue.main.async {
+            guard self.readBTHID, Date().timeIntervalSince(self.startTime) >= 10 else { return }
+            self.pendingConnectionRefresh?.cancel()
+            let work = DispatchWorkItem { [weak self] in self?.refreshBatteryData(readLogs: true) }
+            self.pendingConnectionRefresh = work
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2.5, execute: work)
         }
     }
-    
+
     /*func menuWillOpen(_ menu: NSMenu) {
         dockWindow.orderOut(nil)
         var allDevices = AirBatteryModel.getAll()
@@ -419,7 +449,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUserNotifi
         openAboutPanel()
     }
     
-    @objc func openSetting() {
+    @MainActor @objc func openSetting() {
         openSettingPanel()
     }
     

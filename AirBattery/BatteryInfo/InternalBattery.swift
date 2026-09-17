@@ -19,7 +19,12 @@ struct iBattery {
 }
 
 class InternalBattery {
-    static var status: iBattery = getPowerState()
+    private static let statusLock = NSLock()
+    private static var cachedStatus: iBattery = getPowerState()
+    static var status: iBattery {
+        get { statusLock.lock(); defer { statusLock.unlock() }; return cachedStatus }
+        set { statusLock.lock(); defer { statusLock.unlock() }; cachedStatus = newValue }
+    }
     
     var name: String?
     var timeToFull: Int?
@@ -83,7 +88,7 @@ class InternalBattery {
 }
 
 class InternalFinder {
-    private var serviceInternal: io_connect_t = 0 // io_object_t
+    private var serviceInternal: io_service_t = 0
     private var internalChecked: Bool = false
     private var hasInternalBattery: Bool = false
 
@@ -112,8 +117,9 @@ class InternalFinder {
     }
 
     fileprivate func close() {
-        IOServiceClose(self.serviceInternal)
-        IOObjectRelease(self.serviceInternal)
+        // IOServiceGetMatchingService returns a service object, not a
+        // connection from IOServiceOpen. IOServiceClose is invalid here.
+        if self.serviceInternal != 0 { IOObjectRelease(self.serviceInternal) }
 
         self.serviceInternal = 0
     }
@@ -156,6 +162,11 @@ class InternalFinder {
 
         // Battery Cycles
         battery.cycleCount = self.getIntValue("CycleCount" as CFString)
+        if battery.cycleCount == nil,
+           let value = IORegistryEntryCreateCFProperty(serviceInternal, "BatteryData" as CFString, kCFAllocatorDefault, 0),
+           let data = value.takeRetainedValue() as? [String: Any] {
+            battery.cycleCount = data["CycleCount"] as? Int
+        }
         battery.designCycleCount = self.getIntValue("DesignCycleCount9C" as CFString)
 
         // Plug

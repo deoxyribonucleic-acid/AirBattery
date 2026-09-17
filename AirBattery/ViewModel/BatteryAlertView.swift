@@ -47,19 +47,16 @@ struct AlertInputView: View {
     
     var body: some View {
         ZStack(alignment: Alignment(horizontal: .leading, vertical: .top)) {
-            /*Color.clear
-                .background(BlurView(material: .menu))
-                .cornerRadius(14)*/
-            VStack {
+            VStack(spacing: 12) {
                 Image(iconName)
                     .resizable()
                     .scaledToFit()
                     .frame(height: 40)
                     .padding()
                 Text("Battery alert for")
-                    .font(.system(size: 18, weight: .semibold, design: .rounded))
+                    .font(.title3.weight(.semibold))
                 Text(name)
-                    .font(.system(size: 18, weight: .semibold, design: .rounded))
+                    .font(.title3.weight(.semibold))
                 VStack {
                     HStack(spacing: 4) {
                         Toggle("Notify me when battery charged above:", isOn: $fullOn)
@@ -132,31 +129,35 @@ struct AlertInputView: View {
                         }, label: {
                             Text("Delete")
                                 .foregroundColor(.red)
-                                .frame(width: 135, height: 30)
-                        })
+                                .frame(maxWidth: .infinity, minHeight: 28)
+                        }).airBatteryActionStyle()
                     }
                     Button(action: {
                         let alert = btAlert(name: name, full: full, fullOn: fullOn, fullSound: fullSound, low: low, lowOn: lowOn, lowSound: lowSound)
                         onConfirm(alert)
                     }, label: {
-                        Text("Save").frame(width: canDelete ? 135 : 302, height: 30)
-                    }).keyboardShortcut(.defaultAction)
+                        Text("Save").frame(maxWidth: .infinity, minHeight: 28)
+                    })
+                    .airBatteryActionStyle(prominent: true)
+                    .keyboardShortcut(.defaultAction)
                 }.padding([.top, .bottom], 4)
-            }.padding()
+            }.padding(24)
             Button(action: {
                 onCancel()
             }, label: {
-                Image(systemName: "xmark.circle.fill")
-                    .font(.largeTitle)
+                Image(systemName: "xmark")
+                    .font(.system(size: 12, weight: .semibold))
+                    .frame(width: 28, height: 28)
                     .foregroundColor(overCloseButton ? .blue : .secondary.opacity(0.5))
             })
-            .padding(6)
-            .buttonStyle(.plain)
+            .padding(10)
+            .airBatteryActionStyle()
+            .keyboardShortcut(.cancelAction)
+            .accessibilityLabel(Text("Cancel"))
             .onHover { newValue in overCloseButton = newValue }
         }
-        .frame(width: 360)
-        .background(BlurView(material: .menu).ignoresSafeArea())
-        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .frame(width: 420)
+        .airBatteryPanel(cornerRadius: 24)
     }
     
     func getPowerColor(_ level: Int) -> Color {
@@ -187,7 +188,6 @@ class AlertWindowController {
 
         // 创建窗口
         let window = NNSWindow(contentViewController: NSHostingController(rootView: alertView))
-        window.setContentSize(NSSize(width: 360, height: 334))
         window.title = "Create Battery Alert"
         window.styleMask = [.fullSizeContentView]
         window.isOpaque = false
@@ -196,6 +196,7 @@ class AlertWindowController {
         window.backgroundColor = .clear
         window.isReleasedWhenClosed = false
         window.isMovableByWindowBackground = true
+        window.setContentSize(window.contentViewController!.view.fittingSize)
         window.center()
 
         // 显示窗口
@@ -222,7 +223,7 @@ func batteryAlert() {
     for device in allDevices.filter({ alertList.map({$0.name}).contains($0.deviceName) }) {
         if let alert = alertList.first(where: { $0.name == device.deviceName }) {
             if device.batteryLevel < alert.low && device.isCharging == 0 && alert.lowOn {
-                if let delay = lowPowerNoteDelay[device.deviceName], delay > now.timeIntervalSince1970 { return }
+                if let delay = lowPowerNoteDelay[device.deviceName], delay > now.timeIntervalSince1970 { continue }
                 let title = "Low Battery".local
                 let body = String(format: "\"%@\" remaining battery %d%%".local, device.deviceName, device.batteryLevel)
                 createNotification(title: title, message: body, alertSound: alert.lowSound, delay: true, info: device.deviceName)
@@ -231,7 +232,7 @@ func batteryAlert() {
                 }
             }
             if device.batteryLevel > alert.full && device.isCharging != 0 && alert.fullOn {
-                if let delay = lowPowerNoteDelay[device.deviceName], delay > now.timeIntervalSince1970 { return }
+                if let delay = lowPowerNoteDelay[device.deviceName], delay > now.timeIntervalSince1970 { continue }
                 let title = "Fully Charged".local
                 let body = String(format: "\"%@\" battery has reached %d%%".local, device.deviceName, device.batteryLevel)
                 createNotification(title: title, message: body, alertSound: alert.fullSound, delay: true, info: device.deviceName)

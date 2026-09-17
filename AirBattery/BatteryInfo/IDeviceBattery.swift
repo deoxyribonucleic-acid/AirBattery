@@ -10,7 +10,8 @@ import Foundation
 class IDeviceBattery {
     static var shared: IDeviceBattery = IDeviceBattery()
     
-    //var scanTimer: Timer?
+    private let scanLock = NSLock()
+    private let pencilLock = NSLock()
     @AppStorage("readPencil") var readPencil = false
     @AppStorage("readIDevice") var readIDevice = true
     @AppStorage("updateInterval") var updateInterval = 1
@@ -24,6 +25,8 @@ class IDeviceBattery {
     
     @objc func scanDevices() {
         Thread.detachNewThread {
+            guard self.scanLock.try() else { return }
+            defer { self.scanLock.unlock() }
             if !self.readIDevice { return }
             self.getIDeviceBattery()
         }
@@ -32,6 +35,8 @@ class IDeviceBattery {
     func getPencil(d: Device, type: String = "") {
         if d.deviceType == "iPad" && readPencil {
             Thread.detachNewThread {
+                guard self.pencilLock.try() else { return }
+                defer { self.pencilLock.unlock() }
                 if let result = process(path: "/bin/bash", arguments: ["\(Bundle.main.resourcePath!)/logReader.sh", "\(Bundle.main.resourcePath!)/libimobiledevice/bin/idevicesyslog", type, d.deviceID], timeout: 11 * self.updateInterval) {
                     if let json = try? JSONSerialization.jsonObject(with: Data(result.utf8), options: []) as? [String: Any] {
                         if let level = json["level"] as? Int, let model = json["model"] as? String, let vendor = json["vendor"] as? String {

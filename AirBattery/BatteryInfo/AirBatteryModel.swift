@@ -54,41 +54,54 @@ struct Device: Hashable, Codable {
 }
 
 class AirBatteryModel {
-    static var lock = false
-    static var Devices: [Device] = []
+    private static let devicesLock = NSLock()
+    private static var devices: [Device] = []
+    static var Devices: [Device] {
+        devicesLock.lock()
+        defer { devicesLock.unlock() }
+        return devices
+    }
     static let machineType = ud.string(forKey: "machineType") ?? "Mac"
     static let key = "com.lihaoyun6.AirBattery.widget"
-    
+
     static func updateDevice(_ device: Device) {
-        //let blockedItems = (ud.object(forKey: "blockedDevices") as? [String]) ?? [String]()
-        //if blockedItems.contains(device.deviceName) { return }
-        if lock { return }
-        lock = true
-        //self.Devices.removeAll(where: {blockedItems.contains($0.deviceName)})
-        if let index = self.Devices.firstIndex(where: { $0.deviceName == device.deviceName }) {
-            self.Devices[index] = device
+        guard !device.hasBattery || (0...100).contains(device.batteryLevel) else { return }
+        devicesLock.lock()
+        defer { devicesLock.unlock() }
+        // Keep name-based identity for the existing scanners, which use different
+        // IDs for the same device. The entire lookup/upsert must be atomic.
+        if let index = devices.firstIndex(where: { $0.deviceName == device.deviceName }) {
+            guard device.lastUpdate >= devices[index].lastUpdate else { return }
+            devices[index] = device
         } else {
-            self.Devices.append(device)
+            devices.append(device)
         }
-        lock = false
     }
-    
+
+    static func refreshTimestamp(for name: String) {
+        devicesLock.lock()
+        defer { devicesLock.unlock() }
+        if let index = devices.firstIndex(where: { $0.deviceName == name }) {
+            devices[index].lastUpdate = max(devices[index].lastUpdate, Date().timeIntervalSince1970)
+        }
+    }
+
     static func hideDevice(_ name: String) {
-        for index in Devices.indices {
-            if Devices[index].deviceName == name {
-                Devices[index].isHidden = true
-            }
-        }
+        setHidden(true, name: name)
     }
-    
+
     static func unhideDevice(_ name: String) {
-        for index in Devices.indices {
-            if Devices[index].deviceName == name {
-                Devices[index].isHidden = false
-            }
+        setHidden(false, name: name)
+    }
+
+    private static func setHidden(_ hidden: Bool, name: String) {
+        devicesLock.lock()
+        defer { devicesLock.unlock() }
+        for index in devices.indices where devices[index].deviceName == name {
+            devices[index].isHidden = hidden
         }
     }
-    
+
     static func getBlackList() -> [Device] {
         let blackList = (ud.object(forKey: "blackList") ?? []) as! [String]
         let devices = getAll(noFilter: true)
@@ -159,7 +172,7 @@ class AirBatteryModel {
         if ibStatus.hasBattery { devices.insert(ib2ab(ibStatus), at: 0) }
         do {
             let jsonData = try JSONEncoder().encode(devices)
-            try jsonData.write(to: getJsonURL())
+            try jsonData.write(to: getJsonURL(), options: .atomic)
         } catch {
             print("Write JSON error：\(error)")
         }
@@ -191,7 +204,13 @@ class AirBatteryModel {
     static func checkIfBlocked(name: String) -> Bool {
         let whitelistMode = ud.bool(forKey: "whitelistMode")
         let blockedItems = (ud.object(forKey: "blockedDevices") as? [String]) ?? [String]()
-        if (blockedItems.contains(name) && !whitelistMode) || (!blockedItems.contains(name) && whitelistMode) {
+        // AirPods children inherit the base device's allow/block rule.
+        var baseName = name
+        for suffix in [" (Case)".local, " 🄻🅁", " 🄻", " 🅁"] where baseName.hasSuffix(suffix) {
+            baseName = String(baseName.dropLast(suffix.count))
+        }
+        let listed = blockedItems.contains(name) || blockedItems.contains(baseName)
+        if (listed && !whitelistMode) || (!listed && whitelistMode) {
             return true
         }
         return false

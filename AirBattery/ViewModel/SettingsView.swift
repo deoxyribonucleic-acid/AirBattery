@@ -13,38 +13,75 @@ struct SettingsView: View {
     @State private var selectedItem: String? = "General"
     @AppStorage("showDebug") var showDebug: Bool = false
     
+    private let pages = ["General", "Display", "Nearbility", "Nearcast", "Widget", "Blocklist"]
+
+    private func title(_ page: String) -> LocalizedStringKey {
+        switch page {
+        case "Display": return "Menu Bar & Dock"
+        default: return LocalizedStringKey(page)
+        }
+    }
+
+    private func symbol(_ page: String) -> String {
+        switch page {
+        case "General": return "gearshape"
+        case "Display": return "menubar.dock.rectangle"
+        case "Nearbility": return "antenna.radiowaves.left.and.right"
+        case "Nearcast": return "network"
+        case "Widget": return "square.grid.2x2"
+        case "Blocklist": return "line.3.horizontal.decrease.circle"
+        default: return "ladybug"
+        }
+    }
+
+    @ViewBuilder
+    private func destination(_ page: String) -> some View {
+        switch page {
+        case "Display": DisplayView()
+        case "Nearbility": NearbilityView()
+        case "Nearcast": NearcastView()
+        case "Widget": WidgetView()
+        case "Blocklist": BlacklistView()
+        case "Debug": DebugView(selectedItem: $selectedItem)
+        default: GeneralView()
+        }
+    }
+
     var body: some View {
-        NavigationView {
-            List(selection: $selectedItem) {
-                NavigationLink(destination: GeneralView(), tag: "General", selection: $selectedItem) {
-                    Label("General", image: "gear")
-                }
-                NavigationLink(destination: DisplayView(), tag: "Display", selection: $selectedItem) {
-                    Label("Menu Bar & Dock", image: "dock")
-                }
-                NavigationLink(destination: NearbilityView(), tag: "Nearbility", selection: $selectedItem) {
-                    Label("Nearbility", image: "nearbility")
-                }
-                NavigationLink(destination: NearcastView(), tag: "Nearcast", selection: $selectedItem) {
-                    Label("Nearcast", image: "nearcast")
-                }
-                NavigationLink(destination: WidgetView(), tag: "Widget", selection: $selectedItem) {
-                    Label("Widget", image: "widget")
-                }
-                NavigationLink(destination: BlacklistView(), tag: "Blocklist", selection: $selectedItem) {
-                    Label("Blocklist", image: "blacklist")
-                }
-                if showDebug {
-                    NavigationLink(destination: DebugView(selectedItem: $selectedItem), tag: "Debug", selection: $selectedItem) {
-                        Label("Debug", image: "debug")
+        Group {
+            if #available(macOS 13.0, *) {
+                NavigationSplitView {
+                    List(selection: $selectedItem) {
+                        ForEach(pages + (showDebug ? ["Debug"] : []), id: \.self) { page in
+                            Label(title(page), systemImage: symbol(page))
+                                .padding(.vertical, 5)
+                                .tag(page)
+                        }
                     }
+                    .listStyle(.sidebar)
+                    .navigationSplitViewColumnWidth(min: 180, ideal: 210, max: 260)
+                } detail: {
+                    destination(selectedItem ?? "General")
+                        .navigationTitle(title(selectedItem ?? "General"))
+                }
+            } else {
+                NavigationView {
+                    List {
+                        ForEach(pages + (showDebug ? ["Debug"] : []), id: \.self) { page in
+                            NavigationLink(destination: destination(page), tag: page, selection: $selectedItem) {
+                                Label(title(page), systemImage: symbol(page))
+                                    .padding(.vertical, 5)
+                            }
+                        }
+                    }.listStyle(.sidebar)
+                    destination("General")
                 }
             }
-            .listStyle(.sidebar)
-            .padding(.top, 9)
         }
-        .frame(width: 600, height: 440)
-        .navigationTitle("AirBattery Settings")
+        .frame(minWidth: 720, idealWidth: 780, minHeight: 540, idealHeight: 600)
+        .onChange(of: showDebug) { visible in
+            if !visible && selectedItem == "Debug" { selectedItem = "General" }
+        }
     }
 }
 
@@ -58,10 +95,19 @@ struct GeneralView: View {
     var body: some View {
         SForm {
             SGroupBox(label: "Startup") {
-                SToggle("Launch at Login", isOn: $launchAtLogin)
-                    .onChange(of: launchAtLogin) { newValue in
-                        SMLoginItemSetEnabled("com.lihaoyun6.AirBatteryHelper" as CFString, newValue)
+                SToggle("Launch at Login", isOn: Binding(
+                    get: { launchAtLogin },
+                    set: { enabled in
+                        if ensureLoginItem(enabled: enabled) {
+                            launchAtLogin = enabled
+                        } else {
+                            let alert = NSAlert()
+                            alert.messageText = "Launch at Login".local
+                            alert.informativeText = "Could not update login item. Please check System Settings > General > Login Items."
+                            alert.runModal()
+                        }
                     }
+                ))
                 Divider().opacity(0.5)
                 SPicker("Show AirBattery", selection: $showOn) {
                     Text("Dock").tag("dock")
@@ -101,7 +147,7 @@ struct GeneralView: View {
                         CommandLineTool.install { updateCTL() }
                     }
                 }.onAppear { cltInstalled = CommandLineTool.isInstalled() }
-            }.padding(.top, -20)
+            }
             SGroupBox(label: "Update") { UpdaterSettingsView(updater: updaterController.updater) }
             VStack(spacing: 8) {
                 CheckForUpdatesView(updater: updaterController.updater)
@@ -238,7 +284,7 @@ struct NearcastView: View {
                             .resizable().scaledToFit()
                             .frame(width: 15, height: 15)
                     }).buttonStyle(.plain)
-                }.frame(height: 16)
+                }.frame(minHeight: 28)
                 Divider().opacity(0.5)
                 VStack(spacing: 2) {
                     Text("Nearcast will broadcast your battery data within the local network.")
@@ -287,8 +333,8 @@ struct DisplayView: View {
                     .disabled(!intBattOnStatusBar)
                 Divider().opacity(0.5)
                 SPicker("Battery Icon Style", selection: $iosBatteryStyle) {
-                    Text("macOS").tag(false)
-                    Text("iOS").tag(true)
+                    Text("Classic macOS").tag(false)
+                    Text("Modern macOS / iOS").tag(true)
                 }.disabled(!intBattOnStatusBar)
                 Divider().opacity(0.5)
                 SPicker("Show Percentage", selection: $batteryPercent) {
@@ -305,11 +351,12 @@ struct DisplayView: View {
                 }
                 Divider().opacity(0.5)
                 SPicker("Hide percentage when above", selection: $hideLevel) {
+                    Text("Always").tag(-1)
                     Text("Never").tag(100)
                     ForEach(levelList, id: \.self) { number in
                         Text("\(number)%").tag(number)
                     }
-                    if !levelList.contains(hideLevel) && hideLevel != 100 {
+                    if !levelList.contains(hideLevel) && hideLevel != 100 && hideLevel != -1 {
                         Text("\(hideLevel)%").tag(hideLevel)
                     }
                 }.disabled(!intBattOnStatusBar || (batteryPercent == "hide"))
@@ -389,7 +436,7 @@ struct BlacklistView: View {
     @State private var editingIndex: Int?
     
     var body: some View {
-        SForm(noSpacer: true) {
+        SForm {
             SGroupBox(label: "Blocklist") {
                     SToggle("Allowlist Mode", isOn: $whitelistMode)
                     Divider().opacity(0.5)
@@ -411,6 +458,7 @@ struct BlacklistView: View {
                                 }
                             }
                         }
+                        .frame(minHeight: 220)
                         Button(action: {
                             showSheet = true
                         }) {
@@ -469,7 +517,7 @@ struct DebugView: View {
     @Binding var selectedItem: String?
     
     var body: some View {
-        SForm(noSpacer: true) {
+        SForm {
             SGroupBox {
                 SToggle("Debug Mode", isOn: $test_debug)
                 Divider().opacity(0.5)
